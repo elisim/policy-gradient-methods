@@ -45,7 +45,7 @@ action_size = env.action_space.n
 max_episodes = 5000
 max_steps = 501
 discount_factor = 0.99
-learning_rate = 0.01
+learning_rate = 0.0004
 
 render = False
 
