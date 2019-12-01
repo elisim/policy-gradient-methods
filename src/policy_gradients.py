@@ -3,10 +3,29 @@ import numpy as np
 import tensorflow as tf
 import collections
 
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.optimizers import Adam
 
 env = gym.make('CartPole-v1')
 
 np.random.seed(1)
+
+
+class ValueNetwork:
+    def __init__(self, state_size, learning_rate):
+        self.state_size = state_size
+        self.learning_rate = learning_rate
+
+        self.model = Sequential()
+        self.model.add(Dense(units=32, input_dim=self.state_size, activation='relu'))
+        self.model.add(Dense(units=32, activation='relu'))
+        self.model.add(Dense(units=32, activation='relu'))
+        self.model.add(Dense(units=1))
+        self.model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
+
+    def __call__(self):
+        return self.model
 
 
 class PolicyNetwork:
@@ -55,6 +74,7 @@ render = False
 # Initialize the policy network
 tf.reset_default_graph()
 policy = PolicyNetwork(state_size, action_size, learning_rate)
+value_function = ValueNetwork(state_size, learning_rate)()
 
 
 # Start training the agent with REINFORCE algorithm
@@ -102,6 +122,10 @@ with tf.Session() as sess:
         # Compute Rt for each time-step t and update the network's weights
         for curr_step, transition in enumerate(episode_transitions):
             total_discounted_return = sum(discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[curr_step:]))  # Rt
+            curr_state = episode_transitions[curr_step].state
+            # import ipdb
+            # ipdb.set_trace()
+            value_function.fit(curr_state, np.array(total_discounted_return, ndmin=2), epochs=1, verbose=0, batch_size=1)
             ### Eli Here: Feed here R_t-V(s) where V(s) is NN
-            feed_dict = {policy.state: transition.state, policy.R_t: total_discounted_return, policy.action: transition.action}
+            feed_dict = {policy.state: transition.state, policy.R_t: total_discounted_return-value_function.predict(curr_state), policy.action: transition.action}
             _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
