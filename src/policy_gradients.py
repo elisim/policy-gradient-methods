@@ -131,7 +131,6 @@ def main():
                     print("Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode], round(average_rewards, 2)))
                     if average_rewards > 475:
                         print(' Solved at episode: ' + str(episode))
-                        tf_logger.log_scalar(tag='last episode', value=episode, step=0)
                         solved = True
                     break
                 state = next_state
