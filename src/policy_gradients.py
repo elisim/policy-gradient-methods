@@ -14,8 +14,10 @@ np.random.seed(1)
 
 
 class TensorFlowLogger:
-    def __init__(self):
+    def __init__(self, with_baseline):
         self._log_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        if with_baseline:
+            self._log_dir += "_with_baseline"
         self._file_writer = tf.summary.FileWriter(self._log_dir + "/metrics")
 
     def log_scalar(self, tag, value, step):
@@ -77,14 +79,14 @@ def main():
     action_size = env.action_space.n
 
     # Define hyperparameters
-    max_episodes = 500
+    max_episodes = 5000
     max_steps = 501
     discount_factor = 0.99
     learning_rate = 0.0004
     render = False
 
     # Create Logger to log scalars
-    tf_logger = TensorFlowLogger()
+    tf_logger = TensorFlowLogger(with_baseline=run_with_baseline_flag)
 
     # Initialize the policy network
     tf.reset_default_graph()
