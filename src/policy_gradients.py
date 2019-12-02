@@ -2,14 +2,25 @@ import gym
 import numpy as np
 import tensorflow as tf
 import collections
+import datetime
+import sys
 
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 
 env = gym.make('CartPole-v1')
-
 np.random.seed(1)
+
+
+class TensorFlowLogger:
+    def __init__(self):
+        self._log_dir = "logs/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        self._file_writer = tf.summary.FileWriter(self._log_dir + "/metrics")
+
+    def log_scalar(self, tag, value, step):
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
+        self._file_writer.add_summary(summary, step)
 
 
 class ValueNetwork:
@@ -60,72 +71,92 @@ class PolicyNetwork:
             self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
 
-# Define hyperparameters
-state_size = env.observation_space.shape[0]
-action_size = env.action_space.n
+def main():
+    run_with_baseline_flag = "-b" in sys.argv
+    state_size = env.observation_space.shape[0]
+    action_size = env.action_space.n
 
-max_episodes = 5000
-max_steps = 501
-discount_factor = 0.99
-learning_rate = 0.0004
+    # Define hyperparameters
+    max_episodes = 500
+    max_steps = 501
+    discount_factor = 0.99
+    learning_rate = 0.0004
+    render = False
 
-render = False
+    # Create Logger to log scalars
+    tf_logger = TensorFlowLogger()
 
-# Initialize the policy network
-tf.reset_default_graph()
-policy = PolicyNetwork(state_size, action_size, learning_rate)
-value_function = ValueNetwork(state_size, learning_rate)()
+    # Initialize the policy network
+    tf.reset_default_graph()
+    policy = PolicyNetwork(state_size, action_size, learning_rate)
 
+    if run_with_baseline_flag:
+        value_function = ValueNetwork(state_size, learning_rate)()
 
-# Start training the agent with REINFORCE algorithm
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    solved = False
-    Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
-    episode_rewards = np.zeros(max_episodes)
-    average_rewards = 0.0
+    # Start training the agent with REINFORCE algorithm
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        solved = False
+        Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
+        episode_rewards = np.zeros(max_episodes)
+        average_rewards = 0.0
+        total_steps = 0
 
-    for episode in range(max_episodes):
-        state = env.reset()
-        state = state.reshape([1, state_size])
-        episode_transitions = []
+        for episode in range(max_episodes):
+            state = env.reset()
+            state = state.reshape([1, state_size])
+            episode_transitions = []
 
-        # Generate an episode, out is list of episode_transitions: state, action, reward, next_state and done.
-        for step in range(max_steps):
-            actions_distribution = sess.run(policy.actions_distribution, feed_dict={policy.state: state})
-            action = np.random.choice(np.arange(len(actions_distribution)), p=actions_distribution)
-            next_state, reward, done, _ = env.step(action)
-            next_state = next_state.reshape([1, state_size])
+            # Generate an episode, out is list of episode_transitions: state, action, reward, next_state and done.
+            for step in range(max_steps):
+                actions_distribution = sess.run(policy.actions_distribution, feed_dict={policy.state: state})
+                action = np.random.choice(np.arange(len(actions_distribution)), p=actions_distribution)
+                next_state, reward, done, _ = env.step(action)
+                next_state = next_state.reshape([1, state_size])
 
-            if render:
-                env.render()
+                if render:
+                    env.render()
 
-            action_one_hot = np.zeros(action_size)
-            action_one_hot[action] = 1
-            episode_transitions.append(Transition(state=state, action=action_one_hot, reward=reward, next_state=next_state, done=done))
-            episode_rewards[episode] += reward
+                action_one_hot = np.zeros(action_size)
+                action_one_hot[action] = 1
+                episode_transitions.append(Transition(state=state, action=action_one_hot, reward=reward, next_state=next_state, done=done))
+                episode_rewards[episode] += reward
 
-            if done:
-                if episode > 98:
-                    # Check if solved
-                    average_rewards = np.mean(episode_rewards[(episode - 99):episode+1])
-                print("Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode], round(average_rewards, 2)))
-                if average_rewards > 475:
-                    print(' Solved at episode: ' + str(episode))
-                    solved = True
+                if done:
+                    if episode > 98:
+                        # Check if solved
+                        average_rewards = np.mean(episode_rewards[(episode - 99):episode+1])
+                    print("Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode], round(average_rewards, 2)))
+                    if average_rewards > 475:
+                        print(' Solved at episode: ' + str(episode))
+                        solved = True
+                    break
+                state = next_state
+
+            tf_logger.log_scalar(tag='average_100_episodes_reward', value=average_rewards, step=episode)
+            tf_logger.log_scalar(tag='episode_reward', value=episode_rewards[episode], step=episode)
+
+            if solved:
                 break
-            state = next_state
 
-        if solved:
-            break
+            # Compute Rt for each time-step t and update the network's weights
+            for curr_step, transition in enumerate(episode_transitions):
+                total_discounted_return = sum(discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[curr_step:]))  # Rt
+                R_t_policy = total_discounted_return
 
-        # Compute Rt for each time-step t and update the network's weights
-        for curr_step, transition in enumerate(episode_transitions):
-            total_discounted_return = sum(discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[curr_step:]))  # Rt
-            curr_state = episode_transitions[curr_step].state
-            # import ipdb
-            # ipdb.set_trace()
-            value_function.fit(curr_state, np.array(total_discounted_return, ndmin=2), epochs=1, verbose=0, batch_size=1)
-            ### Eli Here: Feed here R_t-V(s) where V(s) is NN
-            feed_dict = {policy.state: transition.state, policy.R_t: total_discounted_return-value_function.predict(curr_state), policy.action: transition.action}
-            _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
+                if run_with_baseline_flag:
+                    curr_state = episode_transitions[curr_step].state
+                    total_discounted_return_arr = np.array(total_discounted_return, ndmin=2)
+                    value_function.fit(curr_state, total_discounted_return_arr, epochs=1, verbose=0, batch_size=1)
+                    R_t_policy -= value_function.predict(curr_state)
+
+                feed_dict = {policy.state: transition.state,
+                             policy.R_t: R_t_policy,
+                             policy.action: transition.action}
+                _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
+                tf_logger.log_scalar(tag='policy_network_loss', value=loss, step=total_steps)
+                total_steps += 1
+
+
+if __name__ == '__main__':
+    main()
