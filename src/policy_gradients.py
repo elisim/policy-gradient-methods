@@ -82,7 +82,8 @@ def main():
     max_episodes = 5000
     max_steps = 501
     discount_factor = 0.99
-    learning_rate = 0.0004
+    policy_learning_rate = 0.0004
+    value_learning_rate = 0.05
     render = False
 
     # Create Logger to log scalars
@@ -90,10 +91,10 @@ def main():
 
     # Initialize the policy network
     tf.reset_default_graph()
-    policy = PolicyNetwork(state_size, action_size, learning_rate)
+    policy = PolicyNetwork(state_size, action_size, policy_learning_rate)
 
     if run_with_baseline_flag:
-        value_function = ValueNetwork(state_size, learning_rate)()
+        value_function = ValueNetwork(state_size, value_learning_rate)()
 
     # Start training the agent with REINFORCE algorithm
     with tf.Session() as sess:
@@ -105,6 +106,7 @@ def main():
         total_steps = 0
 
         for episode in range(max_episodes):
+            steps_per_episode = 0
             state = env.reset()
             state = state.reshape([1, state_size])
             episode_transitions = []
@@ -134,9 +136,11 @@ def main():
                         solved = True
                     break
                 state = next_state
+                steps_per_episode += 1
 
             tf_logger.log_scalar(tag='average_100_episodes_reward', value=average_rewards, step=episode)
             tf_logger.log_scalar(tag='episode_reward', value=episode_rewards[episode], step=episode)
+            tf_logger.log_scalar(tag='steps_per_episode', value=steps_per_episode, step=episode)
 
             if solved:
                 break
