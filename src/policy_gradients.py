@@ -23,6 +23,7 @@ class TensorFlowLogger:
     def log_scalar(self, tag, value, step):
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
         self._file_writer.add_summary(summary, step)
+     
 
 
 class ValueNetwork:
@@ -133,6 +134,7 @@ def main():
                     print("Episode {} Reward: {} Average over 100 episodes: {}".format(episode, episode_rewards[episode], round(average_rewards, 2)))
                     if average_rewards > 475:
                         print(' Solved at episode: ' + str(episode))
+                        print(' Total Steps: ' + str(total_steps))
                         solved = True
                     break
                 state = next_state
