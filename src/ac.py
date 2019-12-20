@@ -36,7 +36,7 @@ class ActorCritic:
         self.tf_logger = tf_logger
 
         self.actor = PolicyNetwork(self.state_size, self.action_size, self.actor_learning_rate)
-        self.critic = CriticNetwork(self.state_size, self.actor_learning_rate)()
+        self.critic = CriticNetwork(self.state_size, self.critic_learning_rate)()
 
     def train(self, state, action, action_one_hot, reward, next_state, done, total_steps):
         target = np.zeros((1, 1))
@@ -123,7 +123,7 @@ def main():
     max_steps = 501
     discount_factor = 0.99
     policy_learning_rate = 0.0004
-    value_learning_rate = 0.05
+    critic_learning_rate = 0.0004
     render = False
 
     # Create Logger to log scalars
@@ -134,7 +134,7 @@ def main():
 
     # Start training the agent with REINFORCE algorithm
     with tf.Session() as sess:
-        model = ActorCritic(state_size, action_size, policy_learning_rate, value_learning_rate, discount_factor, sess, tf_logger)
+        model = ActorCritic(state_size, action_size, policy_learning_rate, critic_learning_rate, discount_factor, sess, tf_logger)
         sess.run(tf.global_variables_initializer())
         solved = False
         Transition = collections.namedtuple("Transition", ["state", "action", "reward", "next_state", "done"])
@@ -187,25 +187,6 @@ def main():
 
             if solved:
                 break
-
-            # # Compute Rt for each time-step t and update the network's weights
-            # for curr_step, transition in enumerate(episode_transitions):
-            #     total_discounted_return = sum(
-            #         discount_factor ** i * t.reward for i, t in enumerate(episode_transitions[curr_step:]))  # Rt
-            #     R_t_policy = total_discounted_return
-            #
-            #     if run_with_baseline_flag:
-            #         curr_state = episode_transitions[curr_step].state
-            #         total_discounted_return_arr = np.array(total_discounted_return, ndmin=2)
-            #         value_function.fit(curr_state, total_discounted_return_arr, epochs=1, verbose=0, batch_size=1)
-            #         R_t_policy -= value_function.predict(curr_state)
-            #
-            #     feed_dict = {policy.state: transition.state,
-            #                  policy.R_t: R_t_policy,
-            #                  policy.action: transition.action}
-            #     _, loss = sess.run([policy.optimizer, policy.loss], feed_dict)
-            #     tf_logger.log_scalar(tag='policy_network_loss', value=loss, step=total_steps)
-            #     total_steps += 1
 
 
 if __name__ == '__main__':
